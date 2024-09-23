@@ -1,0 +1,111 @@
+---
+title: "Web scraping de Centros Públicos de Investigación"
+author: "Cristian Silva"
+format: html
+editor: visual
+---
+
+## Introducción
+
+En este cuaderno se realiza un proceso de descarga de datos de los centros públicos de investigación de CONAHCYT desde la página web <https://conahcyt.mx/cp/> usando *web scraping*.
+
+## Preparación del entorno
+
+Cargar los paquetes necesarios:
+
+```{r}
+library(tidyverse)
+library(rvest)
+```
+
+## *Web scraping* de los datos
+
+### Preparación de la página
+
+```{r}
+# Dirección web de la página con el directorio de los CPIs
+url <- "https://conahcyt.mx/cp/"
+
+# Copiar la página web
+pagina_web <- read_html(url)
+```
+
+```{r}
+bloques_de_datos <-
+  pagina_web %>% 
+  html_elements(css = "div.kt-inside-inner-col")
+
+bloques_de_datos
+```
+
+```{r}
+nombres_cpi <-
+  bloques_de_datos %>% 
+  html_elements("h3") %>% 
+  html_text()
+
+nombres_cpi
+```
+
+```{r}
+nombres_completos_cpi <-
+  bloques_de_datos %>% 
+  html_elements("h4") %>% 
+  html_text2() %>% 
+  str_replace("\\n", " ")
+
+nombres_completos_cpi
+```
+
+```{r}
+paneles_acordeon <-
+  bloques_de_datos %>% 
+  html_elements(css = "div.kt-accordion-panel-inner")
+
+paneles_acordeon
+```
+
+```{r}
+# Función para extraer los datos de cada fila de un panel acordeón
+extraer_datos_del_panel <- function(bloque) {
+  
+  fila_datos <- 
+    bloque %>% 
+    html_elements(css = "span.kt-svg-icon-list-text") %>% 
+    html_text2() %>% 
+    str_replace_all("\\n", ", ") %>% 
+    str_remove(c("^Aniversario:, ", "^Sede, ", "^Sitio Web,")) %>% 
+    str_trim()
+  
+  names(fila_datos) <- c("aniversario", "direccion", "pagina_web")
+  
+  fila_datos %>%
+    as_tibble_row() %>%
+    return()
+  
+}
+
+# Probar la función
+extraer_datos_del_panel(paneles_acordeon[[1]]) %>% 
+  glimpse()
+```
+
+```{r}
+datos_extraidos <- 
+  map_df(paneles_acordeon, extraer_datos_del_panel) %>% 
+  glimpse()
+```
+
+```{r}
+datos_cpis <- 
+  tibble(nombre = nombres_cpi,
+         nombre_completo = nombres_completos_cpi) %>% 
+  bind_cols(datos_extraidos) %>% 
+  rowid_to_column() %>% 
+  glimpse()
+```
+
+```{r}
+datos_cpis %>% 
+  write_excel_csv("centros_publicos_conahcyt.csv")
+```
